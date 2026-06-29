@@ -15,17 +15,17 @@ from typing import Any, Optional
 
 from playwright.async_api import async_playwright
 
-PRODUCT_ID = int(os.environ.get("PRODUCT_ID", 50368))
+PRODUCT_ID = int(os.environ.get("PRODUCT_ID") or 50368)
 URL = os.environ.get(
     "URL",
     "https://www.torshovsport.no/fotball/supporterutstyr/landslag/norge/nike-norge-herrelandslaget-vm-2026-fotballdrakt-hjemme",
 )
 STATE_FILE = Path(os.environ.get("STATE_FILE", str(Path(__file__).parent / "state.json")))
 LOG_FILE = Path(os.environ.get("LOG_FILE", str(Path(__file__).parent / "scraper.log")))
-POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", 300))
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL") or 300)
 
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_PORT = int(os.environ.get("SMTP_PORT") or 587)
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASS = os.environ.get("SMTP_PASS", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER)

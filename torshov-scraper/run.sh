@@ -5,7 +5,6 @@ JSON="$(curl -sSL http://supervisor/addons/self/info || true)"
 
 opt() { echo "$JSON" | python3 -c "import sys,json; v=json.load(sys.stdin)['data']['options'].get('$1',''); print(v)" 2>/dev/null || true; }
 
-export PRODUCT_ID="$(opt product_id)"
 export URL="${URL:-https://www.torshovsport.no/fotball/supporterutstyr/landslag/norge/nike-norge-herrelandslaget-vm-2026-fotballdrakt-hjemme}"
 export POLL_INTERVAL="$(opt poll_interval)"
 

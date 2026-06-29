@@ -10,7 +10,6 @@ startup: application
 boot: auto
 init: false
 options:
-  product_id: 50368
   url: "https://www.torshovsport.no/fotball/supporterutstyr/landslag/norge/nike-norge-herrelandslaget-vm-2026-fotballdrakt-hjemme"
   poll_interval: 300
   smtp_host: ""
@@ -21,7 +20,6 @@ options:
   smtp_to: ""
   smtp_tls: true
 schema:
-  product_id: int
   url: str
   poll_interval: int
   smtp_host: str

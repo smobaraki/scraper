@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Torshov Sport size scraper — checks product 50368 every 5 min for new sizes."""
+"""Torshov Sport size scraper — checks a product page every N minutes for new sizes."""
 
 import asyncio
 import json
 import logging
 import os
+import re
 import smtplib
 import sys
 from datetime import datetime, timezone
@@ -15,7 +16,6 @@ from typing import Any, Optional
 
 from playwright.async_api import async_playwright
 
-PRODUCT_ID = int(os.environ.get("PRODUCT_ID") or 50368)
 URL = os.environ.get(
     "URL",
     "https://www.torshovsport.no/fotball/supporterutstyr/landslag/norge/nike-norge-herrelandslaget-vm-2026-fotballdrakt-hjemme",
@@ -212,11 +212,11 @@ def summarize_size(variants: list[dict]) -> dict:
     return summary
 
 
-def build_full_state(variants: list[dict], product_info: dict) -> dict:
+def build_full_state(variants: list[dict], product_info: dict, product_id: int) -> dict:
     return {
         "checkedAt": datetime.now(timezone.utc).isoformat(),
         "product": {
-            "id": PRODUCT_ID,
+            "id": product_id,
             "name": product_info.get("name", "Unknown"),
             "articleNumber": product_info.get("articleNumber", "Unknown"),
         },
@@ -281,7 +281,7 @@ async def scrape(logger: logging.Logger) -> None:
             await page.goto(URL, timeout=30000)
             await page.wait_for_timeout(5000)  # Let React hydrate
 
-            # Extract Apollo state directly from the JavaScript context
+            # Extract Apollo state — auto-detect product from variant keys
             logger.debug("Extracting Apollo state...")
             apollo_data = await page.evaluate(
                 """() => {
@@ -289,25 +289,30 @@ async def scrape(logger: logging.Logger) -> None:
                     if (!state) return {error: 'No __APOLLO_STATE__ found'};
 
                     const relevant = {};
-                    const productKey = 'Product:""" + str(PRODUCT_ID) + """';
-                    const variantPrefix = '$' + productKey + '.variants.values.';
+                    let detectedProductKey = null;
 
                     for (const key in state) {
-                        if (key === productKey) {
-                            relevant[key] = {name: state[key].name, articleNumber: state[key].articleNumber, hasVariants: state[key].hasVariants};
-                        }
-
-                        // Include all ProductVariant entries for this product
-                        if (key.startsWith(variantPrefix) && state[key].__typename === 'ProductVariant') {
+                        // Find the Product key referenced by ProductVariant entries
+                        if (state[key].__typename === 'ProductVariant') {
+                            const match = key.match(/^\\$Product:(\\d+)\\./);
+                            if (match && !detectedProductKey) {
+                                detectedProductKey = 'Product:' + match[1];
+                            }
                             relevant[key] = state[key];
                         }
-
-                        // Include referenced StockStatus, Price, Warehouse, Store
-                        const typename = state[key].__typename;
-                        if (typename === 'StockStatus' || typename === 'Price' || typename === 'Warehouse' || typename === 'Store') {
+                        // Include StockStatus, Price, Warehouse, Store
+                        const t = state[key].__typename;
+                        if (t === 'StockStatus' || t === 'Price' || t === 'Warehouse' || t === 'Store') {
                             relevant[key] = state[key];
                         }
                     }
+
+                    // Add the product entry
+                    if (detectedProductKey && state[detectedProductKey]) {
+                        const p = state[detectedProductKey];
+                        relevant[detectedProductKey] = {name: p.name, articleNumber: p.articleNumber, hasVariants: p.hasVariants};
+                    }
+
                     return relevant;
                 }"""
             )
@@ -316,9 +321,25 @@ async def scrape(logger: logging.Logger) -> None:
                 logger.error("Failed: %s", apollo_data["error"])
                 return
 
-            product_info = apollo_data.get(f"Product:{PRODUCT_ID}", {})
+            # Auto-detect product ID from the first Product: key
+            product_id = 0
+            product_info = {}
+            for k, v in apollo_data.items():
+                if k.startswith("Product:") and isinstance(v, dict) and "name" in v:
+                    try:
+                        product_id = int(k.split(":")[1])
+                    except (ValueError, IndexError):
+                        continue
+                    product_info = v
+                    break
 
-            variants = extract_variants(apollo_data, PRODUCT_ID)
+            if not product_id:
+                logger.error("Could not detect product ID from Apollo state")
+                return
+
+            logger.debug("Detected product ID: %d — %s", product_id, product_info.get("name", "?"))
+
+            variants = extract_variants(apollo_data, product_id)
             logger.debug("Raw variants found: %d", len(variants))
 
             if not variants:
@@ -326,7 +347,7 @@ async def scrape(logger: logging.Logger) -> None:
                 return
 
             # Build full state
-            new_state = build_full_state(variants, product_info)
+            new_state = build_full_state(variants, product_info, product_id)
 
             # Compare with previous
             previous = load_previous_state()
@@ -366,7 +387,7 @@ async def scrape(logger: logging.Logger) -> None:
 async def main_loop() -> None:
     logger = setup_logging()
     logger.info("🚀 Torshov Sport size scraper started")
-    logger.info("Product ID: %d — %s", PRODUCT_ID, URL)
+    logger.info("URL: %s", URL)
     logger.info("Polling every %d seconds", POLL_INTERVAL)
 
     while True:

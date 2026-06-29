@@ -1,5 +1,5 @@
 name: Torshov Sport size scraper
-version: "1.1.0"
+version: "1.2.0"
 slug: torshov-scraper
 description: Overvåker Nike Norge VM 2026 fotballdrakt for nye størrelser på Torshov Sport. Sjekker hvert 5. minutt. Sender epost-varsel ved endringer.
 arch:

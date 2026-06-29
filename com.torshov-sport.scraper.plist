@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.torshov-sport.scraper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sinamobaraki/Prosjekter/scraper/.venv/bin/python3</string>
+        <string>/Users/sinamobaraki/Prosjekter/scraper/scraper.py</string>
+        <string>--once</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/sinamobaraki/Prosjekter/scraper/logs/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/sinamobaraki/Prosjekter/scraper/logs/stderr.log</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/sinamobaraki/Prosjekter/scraper</string>
+</dict>
+</plist>

@@ -5,8 +5,11 @@ import asyncio
 import json
 import logging
 import os
+import smtplib
 import sys
 from datetime import datetime, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any, Optional
 
@@ -20,6 +23,14 @@ URL = os.environ.get(
 STATE_FILE = Path(os.environ.get("STATE_FILE", str(Path(__file__).parent / "state.json")))
 LOG_FILE = Path(os.environ.get("LOG_FILE", str(Path(__file__).parent / "scraper.log")))
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", 300))
+
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASS = os.environ.get("SMTP_PASS", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER)
+SMTP_TO = os.environ.get("SMTP_TO", SMTP_USER)
+SMTP_TLS = os.environ.get("SMTP_TLS", "1") == "1"
 
 
 def setup_logging() -> logging.Logger:
@@ -49,6 +60,60 @@ def load_previous_state() -> dict:
         except (json.JSONDecodeError, OSError) as exc:
             logging.getLogger("scraper").warning("Could not load previous state: %s", exc)
     return None
+
+
+def send_email(subject: str, body: str, logger: logging.Logger) -> bool:
+    """Send an email alert via SMTP. Returns True on success."""
+    if not SMTP_HOST or not SMTP_USER or not SMTP_TO:
+        logger.debug("Email not configured — skipping.")
+        return False
+
+    msg = MIMEMultipart()
+    msg["From"] = SMTP_FROM
+    msg["To"] = SMTP_TO
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    try:
+        if SMTP_TLS:
+            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15)
+            server.starttls()
+        else:
+            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15)
+        server.login(SMTP_USER, SMTP_PASS)
+        server.sendmail(SMTP_FROM, [SMTP_TO], msg.as_string())
+        server.quit()
+        logger.info("Email sent to %s: %s", SMTP_TO, subject)
+        return True
+    except Exception as exc:
+        logger.error("Failed to send email: %s", exc)
+        return False
+
+
+class AlertCollector:
+    def __init__(self, product_name: str, url: str):
+        self.product_name = product_name
+        self.url = url
+        self.alerts: list[str] = []
+
+    def add(self, msg: str) -> None:
+        self.alerts.append(msg)
+
+    def has_alerts(self) -> bool:
+        return len(self.alerts) > 0
+
+    def build_email(self) -> tuple[str, str]:
+        subject = f"Torshov Sport – {self.product_name}"
+        lines = [
+            f"Endring oppdaget på {self.product_name}",
+            f"URL: {self.url}",
+            f"Tid: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "",
+        ]
+        lines.extend(self.alerts)
+        lines.append("")
+        lines.append("— Torshov Sport Scraper")
+        return subject, "\n".join(lines)
 
 
 def save_state(state: dict) -> None:
@@ -160,7 +225,7 @@ def build_full_state(variants: list[dict], product_info: dict) -> dict:
     }
 
 
-def diff_states(old: Optional[dict], new: dict, logger: logging.Logger) -> None:
+def diff_states(old: Optional[dict], new: dict, logger: logging.Logger, alerts: AlertCollector) -> None:
     if old is None:
         logger.info("First run – no previous state to compare.")
         return
@@ -171,13 +236,17 @@ def diff_states(old: Optional[dict], new: dict, logger: logging.Logger) -> None:
     # Check for new sizes
     for size, info in new_sizes.items():
         if size not in old_sizes:
-            logger.info("🆕 NEW SIZE APPEARED: %s — %s (%s)",
-                        size, info["stockText"], info["articleNumber"])
+            stock = "PÅ LAGER" if info["buyable"] else "ikke på lager"
+            msg = f"Ny størrelse: {size} ({stock}) — {info['articleNumber']}"
+            logger.info("🆕 %s", msg)
+            alerts.add(msg)
 
     # Check for removed sizes
     for size in old_sizes:
         if size not in new_sizes:
-            logger.info("🗑 Size removed: %s", size)
+            msg = f"Størrelse fjernet: {size}"
+            logger.info("🗑 %s", msg)
+            alerts.add(msg)
 
     # Check for stock status changes
     for size, info in new_sizes.items():
@@ -185,14 +254,18 @@ def diff_states(old: Optional[dict], new: dict, logger: logging.Logger) -> None:
             old_info = old_sizes[size]
             if old_info["buyable"] != info["buyable"]:
                 if info["buyable"]:
-                    logger.info("✅ %s IS NOW IN STOCK! (%s) – Article: %s",
-                                size, info["stockText"], info["articleNumber"])
+                    msg = f"{size} ER NÅ PÅ LAGER! — {info['articleNumber']} — {info['priceIncVat']} kr"
+                    logger.info("✅ %s", msg)
+                    alerts.add(msg)
                 else:
-                    logger.info("❌ %s went OUT of stock (%s)", size, info["stockText"])
+                    msg = f"{size} gikk utsolgt — {info['articleNumber']}"
+                    logger.info("❌ %s", msg)
+                    alerts.add(msg)
 
             if old_info["priceIncVat"] != info["priceIncVat"]:
-                logger.info("💲 %s price changed: %s → %s",
-                            size, old_info["priceIncVat"], info["priceIncVat"])
+                msg = f"{size} prisendring: {old_info['priceIncVat']} → {info['priceIncVat']} kr"
+                logger.info("💲 %s", msg)
+                alerts.add(msg)
 
 
 async def scrape(logger: logging.Logger) -> None:
@@ -257,7 +330,16 @@ async def scrape(logger: logging.Logger) -> None:
 
             # Compare with previous
             previous = load_previous_state()
-            diff_states(previous, new_state, logger)
+            alerts = AlertCollector(
+                product_name=new_state["product"]["name"],
+                url=URL,
+            )
+            diff_states(previous, new_state, logger, alerts)
+
+            # Send email if there are alerts
+            if alerts.has_alerts():
+                subject, body = alerts.build_email()
+                send_email(subject, body, logger)
 
             # Log current state
             logger.info("Product: %s (%s)", new_state["product"]["name"], new_state["product"]["articleNumber"])

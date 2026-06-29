@@ -1,0 +1,19 @@
+name: Torshov Sport size scraper
+version: "1.0.0"
+slug: torshov-scraper
+description: Overvåker Nike Norge VM 2026 fotballdrakt for nye størrelser på Torshov Sport. Sjekker hvert 5. minutt.
+arch:
+  - armv7
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+init: false
+options:
+  product_id: 50368
+  url: "https://www.torshovsport.no/fotball/supporterutstyr/landslag/norge/nike-norge-herrelandslaget-vm-2026-fotballdrakt-hjemme"
+  poll_interval: 300
+schema:
+  product_id: int
+  url: str
+  poll_interval: int

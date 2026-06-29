@@ -105,12 +105,14 @@ class AlertCollector:
     def build_email(self) -> tuple[str, str]:
         subject = f"Torshov Sport – {self.product_name}"
         lines = [
-            f"Endring oppdaget på {self.product_name}",
-            f"URL: {self.url}",
+            f"{self.product_name}",
             f"Tid: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "",
+            "Endringer:",
         ]
         lines.extend(self.alerts)
+        lines.append("")
+        lines.append(f"Gå til produktsiden: {self.url}")
         lines.append("")
         lines.append("— Torshov Sport Scraper")
         return subject, "\n".join(lines)

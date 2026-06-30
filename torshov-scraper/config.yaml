@@ -11,7 +11,7 @@ boot: auto
 init: false
 options:
   url: "https://www.torshovsport.no/fotball/supporterutstyr/landslag/norge/nike-norge-herrelandslaget-vm-2026-fotballdrakt-hjemme"
-  poll_interval: 300
+  poll_interval: 0
   smtp_host: ""
   smtp_port: 587
   smtp_user: ""

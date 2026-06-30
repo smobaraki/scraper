@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import smtplib
 import sys
@@ -22,7 +23,7 @@ URL = os.environ.get(
 )
 STATE_FILE = Path(os.environ.get("STATE_FILE", str(Path(__file__).parent / "state.json")))
 LOG_FILE = Path(os.environ.get("LOG_FILE", str(Path(__file__).parent / "scraper.log")))
-POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL") or 300)
+POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL") or 0)
 
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = int(os.environ.get("SMTP_PORT") or 587)
@@ -390,12 +391,15 @@ async def main_loop() -> None:
     logger = setup_logging()
     logger.info("🚀 Torshov Sport size scraper started")
     logger.info("URL: %s", URL)
-    logger.info("Polling every %d seconds", POLL_INTERVAL)
 
     while True:
         await scrape(logger)
-        logger.info("Sleeping for %d seconds...\n", POLL_INTERVAL)
-        await asyncio.sleep(POLL_INTERVAL)
+        if POLL_INTERVAL > 0:
+            delay = POLL_INTERVAL
+        else:
+            delay = random.randint(5, 60)
+        logger.info("Sleeping for %d seconds...\n", delay)
+        await asyncio.sleep(delay)
 
 
 async def main_once() -> None:
